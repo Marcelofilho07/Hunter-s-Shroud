@@ -11,6 +11,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "MotionControllerComponent.h"
 #include "XRMotionControllerBase.h" // for FXRMotionControllerBase::RightHandSourceId
+#include "BasicObject.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
 
@@ -25,13 +26,17 @@ AProjectLanternCharacter::AProjectLanternCharacter()
 	// set our turn rates for input
 	BaseTurnRate = 45.f;
 	BaseLookUpRate = 45.f;
-
+	TouchRange = 1000.f;
+	IsHoldingObj = false;
+	ZoomAmmount = 0.85f;
+	ZoomInMulti = 0.999f;
+	ZoomOutMulti = 0.999f;
 	// Create a CameraComponent	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
 	FirstPersonCameraComponent->SetRelativeLocation(FVector(-39.56f, 1.75f, 64.f)); // Position the camera
 	FirstPersonCameraComponent->bUsePawnControlRotation = true;
-
+	FoV = FirstPersonCameraComponent->FieldOfView;
 	// Create a mesh component that will be used when being viewed from a '1st person' view (when controlling this pawn)
 	Mesh1P = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CharacterMesh1P"));
 	Mesh1P->SetOnlyOwnerSee(true);
@@ -42,46 +47,14 @@ AProjectLanternCharacter::AProjectLanternCharacter()
 	Mesh1P->SetRelativeLocation(FVector(-0.5f, -4.4f, -155.7f));
 
 	// Create a gun mesh component
-	FP_Gun = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
-	FP_Gun->SetOnlyOwnerSee(true);			// only the owning player will see this mesh
-	FP_Gun->bCastDynamicShadow = false;
-	FP_Gun->CastShadow = false;
-	// FP_Gun->SetupAttachment(Mesh1P, TEXT("GripPoint"));
-	FP_Gun->SetupAttachment(RootComponent);
+	FP_Item = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Item"));
+	FP_Item->bCastDynamicShadow = false;
+	FP_Item->CastShadow = false;
+	FP_Item->SetRelativeLocation(FVector(0.2f, 48.4f, -10.6f));
+	FP_Item->SetupAttachment(RootComponent);
 
-	FP_MuzzleLocation = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzleLocation"));
-	FP_MuzzleLocation->SetupAttachment(FP_Gun);
-	FP_MuzzleLocation->SetRelativeLocation(FVector(0.2f, 48.4f, -10.6f));
 
-	// Default offset from the character location for projectiles to spawn
-	GunOffset = FVector(100.0f, 0.0f, 10.0f);
-
-	// Note: The ProjectileClass and the skeletal mesh/anim blueprints for Mesh1P, FP_Gun, and VR_Gun 
-	// are set in the derived blueprint asset named MyCharacter to avoid direct content references in C++.
-
-	// Create VR Controllers.
-	R_MotionController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("R_MotionController"));
-	R_MotionController->MotionSource = FXRMotionControllerBase::RightHandSourceId;
-	R_MotionController->SetupAttachment(RootComponent);
-	L_MotionController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("L_MotionController"));
-	L_MotionController->SetupAttachment(RootComponent);
-
-	// Create a gun and attach it to the right-hand VR controller.
-	// Create a gun mesh component
-	VR_Gun = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("VR_Gun"));
-	VR_Gun->SetOnlyOwnerSee(true);			// only the owning player will see this mesh
-	VR_Gun->bCastDynamicShadow = false;
-	VR_Gun->CastShadow = false;
-	VR_Gun->SetupAttachment(R_MotionController);
-	VR_Gun->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-
-	VR_MuzzleLocation = CreateDefaultSubobject<USceneComponent>(TEXT("VR_MuzzleLocation"));
-	VR_MuzzleLocation->SetupAttachment(VR_Gun);
-	VR_MuzzleLocation->SetRelativeLocation(FVector(0.000004, 53.999992, 10.000000));
-	VR_MuzzleLocation->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));		// Counteract the rotation of the VR gun model.
-
-	// Uncomment the following line to turn motion controllers on by default:
-	//bUsingMotionControllers = true;
+	CurrentObject = NULL;
 }
 
 void AProjectLanternCharacter::BeginPlay()
@@ -90,18 +63,46 @@ void AProjectLanternCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	//Attach gun mesh component to Skeleton, doing it here because the skeleton is not yet created in the constructor
-	FP_Gun->AttachToComponent(Mesh1P, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
+	FP_Item->AttachToComponent(Mesh1P, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
 
 	// Show or hide the two versions of the gun based on whether or not we're using motion controllers.
-	if (bUsingMotionControllers)
+	Mesh1P->SetHiddenInGame(false, true);
+
+}
+
+void AProjectLanternCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	FHitResult Hit;
+	//This verification can be removed since we check for Ammo before calling this funcion
+	const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
+	const FVector EndTrace = (FirstPersonCameraComponent->GetForwardVector() * TouchRange) + StartTrace;
+	const float CurrentFoV = FirstPersonCameraComponent->FieldOfView;
+	FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
+	//DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5, 0, 3);
+	if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
 	{
-		VR_Gun->SetHiddenInGame(false, true);
-		Mesh1P->SetHiddenInGame(true, true);
+		if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
+		{
+
+			UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
+			CurrentObject = BO;
+			if(FirstPersonCameraComponent->FieldOfView > FoV * ZoomAmmount)
+				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV * ZoomInMulti);
+				//GetWorldTimerManager().SetTimer(TimerHandle_HandleZoomIn, this, &AProjectLanternCharacter::ZoomIn, ZoomInTime, false);
+			//}
+		}
+		else
+		{
+			if(FirstPersonCameraComponent->FieldOfView <= FoV)
+				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
+		}
 	}
 	else
 	{
-		VR_Gun->SetHiddenInGame(true, true);
-		Mesh1P->SetHiddenInGame(false, true);
+		if (FirstPersonCameraComponent->FieldOfView <= FoV)
+			FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
 	}
 }
 
@@ -113,17 +114,8 @@ void AProjectLanternCharacter::SetupPlayerInputComponent(class UInputComponent* 
 	// set up gameplay key bindings
 	check(PlayerInputComponent);
 
-	// Bind jump events
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
-
 	// Bind fire event
-	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AProjectLanternCharacter::OnFire);
-
-	// Enable touchscreen input
-	EnableTouchscreenMovement(PlayerInputComponent);
-
-	PlayerInputComponent->BindAction("ResetVR", IE_Pressed, this, &AProjectLanternCharacter::OnResetVR);
+	PlayerInputComponent->BindAction("Action", IE_Pressed, this, &AProjectLanternCharacter::OnAction);
 
 	// Bind movement events
 	PlayerInputComponent->BindAxis("MoveForward", this, &AProjectLanternCharacter::MoveForward);
@@ -133,43 +125,34 @@ void AProjectLanternCharacter::SetupPlayerInputComponent(class UInputComponent* 
 	// "turn" handles devices that provide an absolute delta, such as a mouse.
 	// "turnrate" is for devices that we choose to treat as a rate of change, such as an analog joystick
 	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
-	PlayerInputComponent->BindAxis("TurnRate", this, &AProjectLanternCharacter::TurnAtRate);
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
-	PlayerInputComponent->BindAxis("LookUpRate", this, &AProjectLanternCharacter::LookUpAtRate);
 }
 
-void AProjectLanternCharacter::OnFire()
+void AProjectLanternCharacter::OnAction()
 {
 	// try and fire a projectile
-	if (ProjectileClass != NULL)
-	{
-		UWorld* const World = GetWorld();
-		if (World != NULL)
+
+		FHitResult Hit;
+		//This verification can be removed since we check for Ammo before calling this funcion
+		const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
+		const FVector EndTrace = (FirstPersonCameraComponent->GetForwardVector() * TouchRange) + StartTrace;
+
+		FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
+		TogglePickUpObj();
+		//DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5, 0, 3);
+		if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
 		{
-			if (bUsingMotionControllers)
+			const FString toLog = Hit.GetActor()->GetName();
+			UE_LOG(LogTemp, Warning, TEXT("%s"), *toLog);
+			if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
 			{
-				const FRotator SpawnRotation = VR_MuzzleLocation->GetComponentRotation();
-				const FVector SpawnLocation = VR_MuzzleLocation->GetComponentLocation();
-				World->SpawnActor<AProjectLanternProjectile>(ProjectileClass, SpawnLocation, SpawnRotation);
-			}
-			else
-			{
-				const FRotator SpawnRotation = GetControlRotation();
-				// MuzzleOffset is in camera space, so transform it to world space before offsetting from the character location to find the final muzzle position
-				const FVector SpawnLocation = ((FP_MuzzleLocation != nullptr) ? FP_MuzzleLocation->GetComponentLocation() : GetActorLocation()) + SpawnRotation.RotateVector(GunOffset);
-
-				//Set Spawn Collision Handling Override
-				FActorSpawnParameters ActorSpawnParams;
-				ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
-
-				// spawn the projectile at the muzzle
-				World->SpawnActor<AProjectLanternProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, ActorSpawnParams);
+				UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
 			}
 		}
-	}
 
+	
 	// try and play the sound if specified
-	if (FireSound != NULL)
+	/*if (FireSound != NULL)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
 	}
@@ -183,76 +166,9 @@ void AProjectLanternCharacter::OnFire()
 		{
 			AnimInstance->Montage_Play(FireAnimation, 1.f);
 		}
-	}
+	}*/
 }
 
-void AProjectLanternCharacter::OnResetVR()
-{
-	UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition();
-}
-
-void AProjectLanternCharacter::BeginTouch(const ETouchIndex::Type FingerIndex, const FVector Location)
-{
-	if (TouchItem.bIsPressed == true)
-	{
-		return;
-	}
-	if ((FingerIndex == TouchItem.FingerIndex) && (TouchItem.bMoved == false))
-	{
-		OnFire();
-	}
-	TouchItem.bIsPressed = true;
-	TouchItem.FingerIndex = FingerIndex;
-	TouchItem.Location = Location;
-	TouchItem.bMoved = false;
-}
-
-void AProjectLanternCharacter::EndTouch(const ETouchIndex::Type FingerIndex, const FVector Location)
-{
-	if (TouchItem.bIsPressed == false)
-	{
-		return;
-	}
-	TouchItem.bIsPressed = false;
-}
-
-//Commenting this section out to be consistent with FPS BP template.
-//This allows the user to turn without using the right virtual joystick
-
-//void AProjectLanternCharacter::TouchUpdate(const ETouchIndex::Type FingerIndex, const FVector Location)
-//{
-//	if ((TouchItem.bIsPressed == true) && (TouchItem.FingerIndex == FingerIndex))
-//	{
-//		if (TouchItem.bIsPressed)
-//		{
-//			if (GetWorld() != nullptr)
-//			{
-//				UGameViewportClient* ViewportClient = GetWorld()->GetGameViewport();
-//				if (ViewportClient != nullptr)
-//				{
-//					FVector MoveDelta = Location - TouchItem.Location;
-//					FVector2D ScreenSize;
-//					ViewportClient->GetViewportSize(ScreenSize);
-//					FVector2D ScaledDelta = FVector2D(MoveDelta.X, MoveDelta.Y) / ScreenSize;
-//					if (FMath::Abs(ScaledDelta.X) >= 4.0 / ScreenSize.X)
-//					{
-//						TouchItem.bMoved = true;
-//						float Value = ScaledDelta.X * BaseTurnRate;
-//						AddControllerYawInput(Value);
-//					}
-//					if (FMath::Abs(ScaledDelta.Y) >= 4.0 / ScreenSize.Y)
-//					{
-//						TouchItem.bMoved = true;
-//						float Value = ScaledDelta.Y * BaseTurnRate;
-//						AddControllerPitchInput(Value);
-//					}
-//					TouchItem.Location = Location;
-//				}
-//				TouchItem.Location = Location;
-//			}
-//		}
-//	}
-//}
 
 void AProjectLanternCharacter::MoveForward(float Value)
 {
@@ -272,29 +188,14 @@ void AProjectLanternCharacter::MoveRight(float Value)
 	}
 }
 
-void AProjectLanternCharacter::TurnAtRate(float Rate)
+void AProjectLanternCharacter::TogglePickUpObj()
 {
-	// calculate delta for this frame from the rate information
-	AddControllerYawInput(Rate * BaseTurnRate * GetWorld()->GetDeltaSeconds());
-}
-
-void AProjectLanternCharacter::LookUpAtRate(float Rate)
-{
-	// calculate delta for this frame from the rate information
-	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
-}
-
-bool AProjectLanternCharacter::EnableTouchscreenMovement(class UInputComponent* PlayerInputComponent)
-{
-	if (FPlatformMisc::SupportsTouchInput() || GetDefault<UInputSettings>()->bUseMouseForTouch)
+	if (CurrentObject)
 	{
-		PlayerInputComponent->BindTouch(EInputEvent::IE_Pressed, this, &AProjectLanternCharacter::BeginTouch);
-		PlayerInputComponent->BindTouch(EInputEvent::IE_Released, this, &AProjectLanternCharacter::EndTouch);
+		IsHoldingObj = !IsHoldingObj;
+		CurrentObject->PickUp();
 
-		//Commenting this out to be more consistent with FPS BP template.
-		//PlayerInputComponent->BindTouch(EInputEvent::IE_Repeat, this, &AProjectLanternCharacter::TouchUpdate);
-		return true;
+		if (!IsHoldingObj)
+			CurrentObject = NULL;
 	}
-	
-	return false;
 }
