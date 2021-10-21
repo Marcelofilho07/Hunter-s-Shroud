@@ -22,31 +22,79 @@ public:
 	UStaticMeshComponent* VisualMesh;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	UStaticMeshComponent* VisualMesh2;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	FString ObjMessage;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	USceneComponent* HoldingComp;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	class USoundBase* ObjSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	class UAnimMontage* ObjAnimation;
+
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
-	bool IsPickable;
+	bool IsDestroyedAfterUse;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsChangeVisualMeshAfterUse;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsTeleport;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	FVector TeleportDestination;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsEnabled;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool ScreenFadesToBlackAfterAction;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	int ObjId;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	int NextTaskObjId;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	bool BGravity;
 
-	UFUNCTION()
-	void PickUp();
-
 	bool BHolding;
-	
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float TeleportDelay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float ChangeDelay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float DestroyDelay;
+
+	FTimerHandle TimerHandle_HandleTeleport;
+	FTimerHandle TimerHandle_HandleChange;
+	FTimerHandle TimerHandle_HandleDestroy;
 
 	FRotator ControlRotation;
 	ACharacter* MyCharacter;
 	UCameraComponent* PlayerCamera;
 	FVector ForwardVector;
 
+	UFUNCTION()
+	void Action();
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+
+	void Teleport();
+
+	void ChangeMesh();
+
+	void DestroySelf();
 
 public:	
 	// Called every frame

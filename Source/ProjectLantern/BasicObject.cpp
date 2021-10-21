@@ -2,6 +2,7 @@
 
 
 #include "BasicObject.h"
+#include "ProjectLanternGameMode.h"
 #include "Camera/CameraComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Character.h"
@@ -11,13 +12,26 @@ ABasicObject::ABasicObject()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
-	IsPickable = false;
+	IsEnabled = true;
+	IsDestroyedAfterUse = false;
+	IsChangeVisualMeshAfterUse = false;
+	IsTeleport = false;
 	BGravity = true;
 	BHolding = false;
+	ObjId = 0;
+	NextTaskObjId = 0;
+	TeleportDelay = 1.5f;
+	ChangeDelay = 1.5f;
+	DestroyDelay = 1.5f;
 	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	VisualMesh->SetOnlyOwnerSee(false);
 	VisualMesh->SetSimulatePhysics(BGravity);
 	SetRootComponent(VisualMesh);
+	VisualMesh2 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh2"));
+	VisualMesh2->SetOnlyOwnerSee(false);
+	VisualMesh2->SetSimulatePhysics(BGravity);
+	VisualMesh2->SetVisibility(false);
+	SetRootComponent(VisualMesh2);
 
 }
 
@@ -47,6 +61,24 @@ void ABasicObject::BeginPlay()
 	
 }
 
+void ABasicObject::Teleport()
+{
+	MyCharacter->SetActorLocation(TeleportDestination);
+}
+
+void ABasicObject::ChangeMesh()
+{
+	VisualMesh->SetVisibility(false);
+	VisualMesh2->SetVisibility(true);
+}
+
+
+void ABasicObject::DestroySelf()
+{
+	this->Destroy();
+}
+
+
 // Called every frame
 void ABasicObject::Tick(float DeltaTime)
 {
@@ -55,26 +87,53 @@ void ABasicObject::Tick(float DeltaTime)
 }
 
 
-void ABasicObject::PickUp()
+void ABasicObject::Action()
 {
-	if (IsPickable)
+	if (IsEnabled)
 	{
-		BHolding = !BHolding;
-		BGravity = !BGravity;
-		VisualMesh->SetEnableGravity(BGravity);
-		VisualMesh->SetSimulatePhysics(BHolding ? false : true);
-		VisualMesh->SetCollisionEnabled(BHolding ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
-		if (HoldingComp && BHolding)
+		if (IsChangeVisualMeshAfterUse)
 		{
-			VisualMesh->AttachToComponent(HoldingComp, FAttachmentTransformRules::KeepWorldTransform);
-			SetActorLocation(HoldingComp->GetComponentLocation());
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleChange, this, &ABasicObject::ChangeMesh, ChangeDelay, false);
+		}
+		if (IsDestroyedAfterUse)
+		{
+
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleDestroy, this, &ABasicObject::DestroySelf, DestroyDelay, false);
+			/*BHolding = !BHolding;
+			BGravity = !BGravity;
+			VisualMesh->SetEnableGravity(BGravity);
+			VisualMesh->SetSimulatePhysics(BHolding ? false : true);
+			VisualMesh->SetCollisionEnabled(BHolding ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+			if (HoldingComp && BHolding)
+			{
+				VisualMesh->AttachToComponent(HoldingComp, FAttachmentTransformRules::KeepRelativeTransform);
+				SetActorLocation(HoldingComp->GetComponentLocation());
+			}
+
+			if (!BHolding)
+			{
+				VisualMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+				//ForwardVector = PlayerCamera->GetForwardVector();
+				//VisualMesh->AddForce(ForwardVector * 10 * VisualMesh->GetMass());
+			}*/
 		}
 
-		if (!BHolding)
+		if (ObjSound != NULL)
 		{
-			VisualMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-			//ForwardVector = PlayerCamera->GetForwardVector();
-			//VisualMesh->AddForce(ForwardVector * 10 * VisualMesh->GetMass());
+			UGameplayStatics::PlaySoundAtLocation(this, ObjSound, GetActorLocation());
+		}
+
+		if (AProjectLanternGameMode* GM = Cast<AProjectLanternGameMode>(GetWorld()->GetAuthGameMode()))
+		{
+			GM->CompleteTask(ObjId, NextTaskObjId);
+			if(ScreenFadesToBlackAfterAction)
+				GM->FadeScreen();
+		}
+
+		if (IsTeleport && !TeleportDestination.IsZero())
+		{
+
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleTeleport, this, &ABasicObject::Teleport, TeleportDelay, false);
 		}
 	}
 }

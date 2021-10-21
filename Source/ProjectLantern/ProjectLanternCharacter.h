@@ -85,8 +85,15 @@ public:
 
 	class ABasicObject* CurrentObject;
 
+	FTimerHandle TimerHandle_HandleFadeBlack;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float FadeTime;
+
+
 	bool IsHoldingObj;
 
+	bool CanMove;
 
 	virtual void Tick(float DeltaTime) override;
 
@@ -102,6 +109,8 @@ protected:
 	void MoveRight(float Val);
 
 	void TogglePickUpObj();
+
+	void ToggleMovement();
 
 	float FoV;
 

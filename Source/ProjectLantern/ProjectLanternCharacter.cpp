@@ -31,6 +31,8 @@ AProjectLanternCharacter::AProjectLanternCharacter()
 	ZoomAmmount = 0.85f;
 	ZoomInMulti = 0.999f;
 	ZoomOutMulti = 0.999f;
+	FadeTime = 1.5f;
+	CanMove = true;
 	// Create a CameraComponent	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
@@ -51,7 +53,7 @@ AProjectLanternCharacter::AProjectLanternCharacter()
 	FP_Item->bCastDynamicShadow = false;
 	FP_Item->CastShadow = false;
 	FP_Item->SetRelativeLocation(FVector(0.2f, 48.4f, -10.6f));
-	FP_Item->SetupAttachment(RootComponent);
+	FP_Item->SetupAttachment(Mesh1P);
 
 
 	CurrentObject = NULL;
@@ -86,7 +88,7 @@ void AProjectLanternCharacter::Tick(float DeltaTime)
 		if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
 		{
 
-			UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
+			//UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
 			CurrentObject = BO;
 			if(FirstPersonCameraComponent->FieldOfView > FoV * ZoomAmmount)
 				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV * ZoomInMulti);
@@ -172,7 +174,7 @@ void AProjectLanternCharacter::OnAction()
 
 void AProjectLanternCharacter::MoveForward(float Value)
 {
-	if (Value != 0.0f)
+	if (Value != 0.0f && CanMove)
 	{
 		// add movement in that direction
 		AddMovementInput(GetActorForwardVector(), Value);
@@ -181,7 +183,7 @@ void AProjectLanternCharacter::MoveForward(float Value)
 
 void AProjectLanternCharacter::MoveRight(float Value)
 {
-	if (Value != 0.0f)
+	if (Value != 0.0f && CanMove)
 	{
 		// add movement in that direction
 		AddMovementInput(GetActorRightVector(), Value);
@@ -193,9 +195,18 @@ void AProjectLanternCharacter::TogglePickUpObj()
 	if (CurrentObject)
 	{
 		IsHoldingObj = !IsHoldingObj;
-		CurrentObject->PickUp();
-
+		if (CurrentObject->ScreenFadesToBlackAfterAction && CurrentObject->IsEnabled)
+		{
+			ToggleMovement();
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleFadeBlack, this, &AProjectLanternCharacter::ToggleMovement, FadeTime, false);
+		}
+		CurrentObject->Action();
 		if (!IsHoldingObj)
 			CurrentObject = NULL;
 	}
+}
+
+void AProjectLanternCharacter::ToggleMovement()
+{
+	CanMove = !CanMove;
 }

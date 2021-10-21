@@ -13,6 +13,11 @@ class AProjectLanternGameMode : public AGameModeBase
 
 public:
 	AProjectLanternGameMode();
+
+	void CompleteTask(int32 TaskId, int32 NextTaskId);
+
+	void FadeScreen();
+
 };
 
 
