@@ -18,6 +18,8 @@ public:
 
 	void FadeScreen();
 
+	void UpdateFlavorText(FString FT);
+
 };
 
 

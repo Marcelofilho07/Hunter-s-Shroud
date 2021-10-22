@@ -58,3 +58,13 @@ void AProjectLanternGameMode::FadeScreen()
 			lsa->SequencePlayer->Play();
 	}
 }
+
+
+void AProjectLanternGameMode::UpdateFlavorText(FString FT)
+{
+	if (AProjectLanternStateBase* GS = Cast<AProjectLanternStateBase>(GameState))
+	{
+		GS->FlavorText = FT;
+	}
+}
+

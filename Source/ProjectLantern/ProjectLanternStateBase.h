@@ -24,5 +24,8 @@ public:
 
 	TArray<AActor*> FoundActors;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	FString FlavorText;
+
 	int32 GameDay;
 };

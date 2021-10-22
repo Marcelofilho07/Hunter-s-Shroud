@@ -14,6 +14,7 @@
 #include "BasicObject.h"
 #include "ProjectLanternHUD.h"
 #include "EngineUtils.h"
+#include "ProjectLanternGameMode.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
 
@@ -92,32 +93,31 @@ void AProjectLanternCharacter::Tick(float DeltaTime)
 	const float CurrentFoV = FirstPersonCameraComponent->FieldOfView;
 	FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
 	//DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5, 0, 3);
-	if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
+	if (AProjectLanternGameMode* GM = Cast<AProjectLanternGameMode>(GetWorld()->GetAuthGameMode()))//I should cast this outside of tick for better performance
 	{
-		if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
+		if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
 		{
-			CurrentObject = BO;
-			if (MainHUD)
+			if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
 			{
-				if (AProjectLanternHUD* HUD = Cast<AProjectLanternHUD>(MainHUD[0].GetDefaultObject()))
-				{
-					UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
-					HUD->FlavorText = BO->ObjMessage;
-				}
+				CurrentObject = BO;
+				GM->UpdateFlavorText(BO->ObjMessage);
+
+				if (FirstPersonCameraComponent->FieldOfView > FoV * ZoomAmmount)
+					FirstPersonCameraComponent->SetFieldOfView(CurrentFoV * ZoomInMulti);
 			}
-			if(FirstPersonCameraComponent->FieldOfView > FoV * ZoomAmmount)
-				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV * ZoomInMulti);
+			else
+			{
+				GM->UpdateFlavorText("");
+				if (FirstPersonCameraComponent->FieldOfView <= FoV)
+					FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
+			}
 		}
 		else
 		{
-			if(FirstPersonCameraComponent->FieldOfView <= FoV)
+			GM->UpdateFlavorText("");
+			if (FirstPersonCameraComponent->FieldOfView <= FoV)
 				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
 		}
-	}
-	else
-	{
-		if (FirstPersonCameraComponent->FieldOfView <= FoV)
-			FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
 	}
 }
 
