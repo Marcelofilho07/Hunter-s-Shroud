@@ -12,6 +12,8 @@
 #include "MotionControllerComponent.h"
 #include "XRMotionControllerBase.h" // for FXRMotionControllerBase::RightHandSourceId
 #include "BasicObject.h"
+#include "ProjectLanternHUD.h"
+#include "EngineUtils.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
 
@@ -70,6 +72,13 @@ void AProjectLanternCharacter::BeginPlay()
 	// Show or hide the two versions of the gun based on whether or not we're using motion controllers.
 	Mesh1P->SetHiddenInGame(false, true);
 
+
+	/*for (TActorIterator<class AProjectLanternHUD> it(GetWorld()); it; ++it)
+	{
+		AProjectLanternHUD* lsa = *it;
+
+		MainHUD = lsa;
+	}*/
 }
 
 void AProjectLanternCharacter::Tick(float DeltaTime)
@@ -87,13 +96,17 @@ void AProjectLanternCharacter::Tick(float DeltaTime)
 	{
 		if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
 		{
-
-			//UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
 			CurrentObject = BO;
+			if (MainHUD)
+			{
+				if (AProjectLanternHUD* HUD = Cast<AProjectLanternHUD>(MainHUD[0].GetDefaultObject()))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
+					HUD->FlavorText = BO->ObjMessage;
+				}
+			}
 			if(FirstPersonCameraComponent->FieldOfView > FoV * ZoomAmmount)
 				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV * ZoomInMulti);
-				//GetWorldTimerManager().SetTimer(TimerHandle_HandleZoomIn, this, &AProjectLanternCharacter::ZoomIn, ZoomInTime, false);
-			//}
 		}
 		else
 		{
@@ -140,17 +153,8 @@ void AProjectLanternCharacter::OnAction()
 		const FVector EndTrace = (FirstPersonCameraComponent->GetForwardVector() * TouchRange) + StartTrace;
 
 		FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
-		TogglePickUpObj();
+		InteractWithObj();
 		//DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5, 0, 3);
-		if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
-		{
-			const FString toLog = Hit.GetActor()->GetName();
-			UE_LOG(LogTemp, Warning, TEXT("%s"), *toLog);
-			if (ABasicObject* BO = Cast<ABasicObject>(Hit.GetActor()))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("%s"), *BO->ObjMessage);
-			}
-		}
 
 	
 	// try and play the sound if specified
@@ -190,7 +194,7 @@ void AProjectLanternCharacter::MoveRight(float Value)
 	}
 }
 
-void AProjectLanternCharacter::TogglePickUpObj()
+void AProjectLanternCharacter::InteractWithObj()
 {
 	if (CurrentObject)
 	{

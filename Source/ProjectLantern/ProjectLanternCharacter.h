@@ -64,6 +64,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	class UAnimMontage* FireAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	TSubclassOf<class AProjectLanternHUD> MainHUD;
+
 	/** Whether to use motion controller location for aiming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	uint32 bUsingMotionControllers : 1;
@@ -108,7 +111,7 @@ protected:
 	/** Handles stafing movement, left and right */
 	void MoveRight(float Val);
 
-	void TogglePickUpObj();
+	void InteractWithObj();
 
 	void ToggleMovement();
 
