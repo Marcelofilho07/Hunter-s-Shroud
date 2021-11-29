@@ -15,6 +15,7 @@
 #include "ProjectLanternHUD.h"
 #include "EngineUtils.h"
 #include "ProjectLanternGameMode.h"
+#include "Enemy.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogFPChar, Warning, All);
 
@@ -36,6 +37,13 @@ AProjectLanternCharacter::AProjectLanternCharacter()
 	ZoomOutMulti = 0.999f;
 	FadeTime = 1.5f;
 	CanMove = true;
+	CanClick = true;
+	CanFire = true;
+	CanMakeStepSound = true;
+	SpeedMultiplier = 1.f;
+	IsHoldingGun = false;
+	GunDamage = 50.f;
+	GunRange = 1000000.f;
 	// Create a CameraComponent	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());
@@ -71,15 +79,9 @@ void AProjectLanternCharacter::BeginPlay()
 	FP_Item->AttachToComponent(Mesh1P, FAttachmentTransformRules(EAttachmentRule::SnapToTarget, true), TEXT("GripPoint"));
 
 	// Show or hide the two versions of the gun based on whether or not we're using motion controllers.
-	Mesh1P->SetHiddenInGame(false, true);
+	Mesh1P->SetHiddenInGame(!IsHoldingGun, true);
 
-
-	/*for (TActorIterator<class AProjectLanternHUD> it(GetWorld()); it; ++it)
-	{
-		AProjectLanternHUD* lsa = *it;
-
-		MainHUD = lsa;
-	}*/
+	WalkSound = WalkGrassSound;
 }
 
 void AProjectLanternCharacter::Tick(float DeltaTime)
@@ -107,15 +109,17 @@ void AProjectLanternCharacter::Tick(float DeltaTime)
 			}
 			else
 			{
+				CurrentObject = NULL;
 				GM->UpdateFlavorText("");
-				if (FirstPersonCameraComponent->FieldOfView <= FoV)
+				if (FirstPersonCameraComponent->FieldOfView < FoV)
 					FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
 			}
 		}
 		else
 		{
+			CurrentObject = NULL;
 			GM->UpdateFlavorText("");
-			if (FirstPersonCameraComponent->FieldOfView <= FoV)
+			if (FirstPersonCameraComponent->FieldOfView < FoV)
 				FirstPersonCameraComponent->SetFieldOfView(CurrentFoV / ZoomOutMulti);
 		}
 	}
@@ -131,6 +135,8 @@ void AProjectLanternCharacter::SetupPlayerInputComponent(class UInputComponent* 
 
 	// Bind fire event
 	PlayerInputComponent->BindAction("Action", IE_Pressed, this, &AProjectLanternCharacter::OnAction);
+	// Bind fire event
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AProjectLanternCharacter::OnFire);
 
 	// Bind movement events
 	PlayerInputComponent->BindAxis("MoveForward", this, &AProjectLanternCharacter::MoveForward);
@@ -145,34 +151,58 @@ void AProjectLanternCharacter::SetupPlayerInputComponent(class UInputComponent* 
 
 void AProjectLanternCharacter::OnAction()
 {
-	// try and fire a projectile
-
+	//Interact with the object
+	if (CanClick)
+	{
 		FHitResult Hit;
-		//This verification can be removed since we check for Ammo before calling this funcion
 		const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
 		const FVector EndTrace = (FirstPersonCameraComponent->GetForwardVector() * TouchRange) + StartTrace;
 
 		FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
 		InteractWithObj();
-		//DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5, 0, 3);
-
-	
-	// try and play the sound if specified
-	/*if (FireSound != NULL)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
 	}
+}
 
-	// try and play a firing animation if specified
-	if (FireAnimation != NULL)
+void AProjectLanternCharacter::OnFire()
+{
+	// try and fire gun
+	if (IsHoldingGun && CanFire)
 	{
-		// Get the animation object for the arms mesh
-		UAnimInstance* AnimInstance = Mesh1P->GetAnimInstance();
-		if (AnimInstance != NULL)
+		FHitResult Hit;
+		const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
+		const FVector EndTrace = (FirstPersonCameraComponent->GetForwardVector() * GunRange) + StartTrace;
+
+		FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
+		if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
 		{
-			AnimInstance->Montage_Play(FireAnimation, 1.f);
+			if (AEnemy* Enemy = Cast<AEnemy>(Hit.GetActor()))
+			{
+				Enemy->TakeDamage(GunDamage);
+			}
 		}
-	}*/
+
+		// try and play the sound if specified
+		if (FireSound != NULL)
+		{
+			UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
+		}
+
+		// try and play a firing animation if specified
+		if (FireAnimation != NULL)
+		{
+			// Get the animation object for the arms mesh
+			UAnimInstance* AnimInstance = Mesh1P->GetAnimInstance();
+			if (AnimInstance != NULL)
+			{
+				AnimInstance->Montage_Play(FireAnimation, 1.f);
+			}
+		}
+
+		ToggleFire();
+		GetWorldTimerManager().SetTimer(TimerHandle_HandleRateOfFire, this, &AProjectLanternCharacter::ToggleFire, RateOfFireTime, false);
+
+		//FP_Item->SetVisibility(false);
+	}
 }
 
 
@@ -180,8 +210,31 @@ void AProjectLanternCharacter::MoveForward(float Value)
 {
 	if (Value != 0.0f && CanMove)
 	{
+
+		if (WalkSound != NULL && CanMakeStepSound)
+		{
+			FHitResult Hit;
+			const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
+			const FVector EndTrace = (FirstPersonCameraComponent->GetUpVector() * -1 * GunRange) + StartTrace;
+
+			FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
+			if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
+			{
+				if (AActor* Floor = Cast<AActor>(Hit.GetActor()))
+				{
+					if (Floor->GetName() == "SM_Plane_19") //indeed there is a better way to check what I'm stepping over(check for materials), but I'm tired and wanna release an alpha
+						WalkSound = WalkWoodSound;
+					else if (Floor->GetName() == "SM_Plane_83")
+						WalkSound = WalkGrassSound;
+				}
+			}
+
+			UGameplayStatics::PlaySoundAtLocation(this, WalkSound, GetActorLocation(), 1.f, FMath::RandRange(0.1f, 1.1f));
+			ToggleCanMakeWalkingSound();
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleWalkSound, this, &AProjectLanternCharacter::ToggleCanMakeWalkingSound, WalkSoundTime, false);
+		}
 		// add movement in that direction
-		AddMovementInput(GetActorForwardVector(), Value);
+		AddMovementInput(GetActorForwardVector(), Value* SpeedMultiplier);
 	}
 }
 
@@ -190,7 +243,31 @@ void AProjectLanternCharacter::MoveRight(float Value)
 	if (Value != 0.0f && CanMove)
 	{
 		// add movement in that direction
-		AddMovementInput(GetActorRightVector(), Value);
+
+		if (WalkSound != NULL && CanMakeStepSound)
+		{
+			FHitResult Hit;
+			const FVector StartTrace = FirstPersonCameraComponent->GetComponentLocation();
+			const FVector EndTrace = (FirstPersonCameraComponent->GetUpVector() * -1 * GunRange) + StartTrace;
+
+			FCollisionQueryParams QueryParams = FCollisionQueryParams(SCENE_QUERY_STAT(WeaponTrace), false, this);
+			if (GetWorld()->LineTraceSingleByChannel(Hit, StartTrace, EndTrace, ECC_Visibility, QueryParams))
+			{
+				if (AActor* Floor = Cast<AActor>(Hit.GetActor()))
+				{
+					if (Floor->GetName() == "SM_Plane_19") //indeed there is a better way to check what I'm stepping over(check for materials), but I'm tired and wanna release an alpha
+						WalkSound = WalkWoodSound;
+					else if (Floor->GetName() == "SM_Plane_83")
+						WalkSound = WalkGrassSound;
+				}
+			}
+			UGameplayStatics::PlaySoundAtLocation(this, WalkSound, GetActorLocation(), 1.f, FMath::RandRange(0.1f, 1.1f));
+			ToggleCanMakeWalkingSound();
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleWalkSound, this, &AProjectLanternCharacter::ToggleCanMakeWalkingSound, WalkSoundTime, false);
+		}
+
+		// add movement in that direction
+		AddMovementInput(GetActorRightVector(), Value * SpeedMultiplier);
 	}
 }
 
@@ -213,4 +290,21 @@ void AProjectLanternCharacter::InteractWithObj()
 void AProjectLanternCharacter::ToggleMovement()
 {
 	CanMove = !CanMove;
+	CanClick = !CanClick;
+}
+
+void AProjectLanternCharacter::ToggleCanMakeWalkingSound()
+{
+	CanMakeStepSound = !CanMakeStepSound;
+}
+
+void AProjectLanternCharacter::ToggleFire()
+{
+	CanFire = !CanFire;
+}
+
+void AProjectLanternCharacter::ToggleGun()
+{
+	IsHoldingGun = !IsHoldingGun;
+	Mesh1P->SetHiddenInGame(!IsHoldingGun, true);
 }

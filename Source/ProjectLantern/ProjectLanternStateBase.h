@@ -17,10 +17,7 @@ class PROJECTLANTERN_API AProjectLanternStateBase : public AGameStateBase
 public:
 	AProjectLanternStateBase();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
-	TArray<int32> AEventsToDoManager;
-
-	TArray<int32> AEventsDoneManager;
+	TArray<AActor*> FoundEvents;
 
 	TArray<AActor*> FoundActors;
 
@@ -28,4 +25,13 @@ public:
 	FString FlavorText;
 
 	int32 GameDay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	float LightningLevel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	FColor LightningColor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	FColor FogColor;
 };

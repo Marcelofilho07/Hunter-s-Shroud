@@ -5,6 +5,8 @@
 #include "ProjectLanternGameMode.h"
 #include "Camera/CameraComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
+#include "ProjectLanternInstance.h"
 #include "GameFramework/Character.h"
 
 // Sets default values
@@ -15,23 +17,25 @@ ABasicObject::ABasicObject()
 	IsEnabled = true;
 	IsDestroyedAfterUse = false;
 	IsChangeVisualMeshAfterUse = false;
+	IsChangeAmbience = false;
 	IsTeleport = false;
 	BGravity = true;
 	BHolding = false;
 	ObjId = 0;
-	NextTaskObjId = 0;
+	NextObjId = 0;
 	TeleportDelay = 1.5f;
 	ChangeDelay = 1.5f;
 	DestroyDelay = 1.5f;
+	AmbienceDelay = 1.5f;
+	EndGameDelay = 1.5f;
 	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
-	VisualMesh->SetOnlyOwnerSee(false);
-	VisualMesh->SetSimulatePhysics(BGravity);
-	SetRootComponent(VisualMesh);
-	VisualMesh2 = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh2"));
-	VisualMesh2->SetOnlyOwnerSee(false);
-	VisualMesh2->SetSimulatePhysics(BGravity);
-	VisualMesh2->SetVisibility(false);
-	SetRootComponent(VisualMesh2);
+	VisualMesh->SetupAttachment(RootComponent);
+
+	if (StaticMesh)
+	{
+		VisualMesh->SetStaticMesh(StaticMesh);
+		VisualMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
+	}
 
 }
 
@@ -68,13 +72,22 @@ void ABasicObject::Teleport()
 
 void ABasicObject::ChangeMesh()
 {
-	VisualMesh->SetVisibility(false);
-	VisualMesh2->SetVisibility(true);
+	//VisualMesh->SetVisibility(false);
+	//VisualMesh2->SetVisibility(true);
+}
+
+void ABasicObject::ChangeAmbience()
+{
+	if(AProjectLanternGameMode* GM = Cast<AProjectLanternGameMode>(GetWorld()->GetAuthGameMode()))
+		GM->ChangeAmbience(LightningLevel, LightningColor, FogColor);
 }
 
 
 void ABasicObject::DestroySelf()
 {
+
+	if (AProjectLanternGameMode* GM = Cast<AProjectLanternGameMode>(GetWorld()->GetAuthGameMode()))
+		GM->RemoveActor(this);
 	this->Destroy();
 }
 
@@ -99,23 +112,6 @@ void ABasicObject::Action()
 		{
 
 			GetWorldTimerManager().SetTimer(TimerHandle_HandleDestroy, this, &ABasicObject::DestroySelf, DestroyDelay, false);
-			/*BHolding = !BHolding;
-			BGravity = !BGravity;
-			VisualMesh->SetEnableGravity(BGravity);
-			VisualMesh->SetSimulatePhysics(BHolding ? false : true);
-			VisualMesh->SetCollisionEnabled(BHolding ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
-			if (HoldingComp && BHolding)
-			{
-				VisualMesh->AttachToComponent(HoldingComp, FAttachmentTransformRules::KeepRelativeTransform);
-				SetActorLocation(HoldingComp->GetComponentLocation());
-			}
-
-			if (!BHolding)
-			{
-				VisualMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-				//ForwardVector = PlayerCamera->GetForwardVector();
-				//VisualMesh->AddForce(ForwardVector * 10 * VisualMesh->GetMass());
-			}*/
 		}
 
 		if (ObjSound != NULL)
@@ -123,10 +119,16 @@ void ABasicObject::Action()
 			UGameplayStatics::PlaySoundAtLocation(this, ObjSound, GetActorLocation());
 		}
 
+		if (IsChangeAmbience)
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleAmbience, this, &ABasicObject::ChangeAmbience, AmbienceDelay, false);
+
 		if (AProjectLanternGameMode* GM = Cast<AProjectLanternGameMode>(GetWorld()->GetAuthGameMode()))
 		{
-			GM->CompleteTask(ObjId, NextTaskObjId);
-			if(ScreenFadesToBlackAfterAction)
+			if (NextObjId != 0)
+				GM->EnableObj(NextObjId);
+			if (NextEventId != 0)
+				GM->EnableEvent(NextEventId);
+			if (ScreenFadesToBlackAfterAction)
 				GM->FadeScreen();
 		}
 
@@ -135,6 +137,32 @@ void ABasicObject::Action()
 
 			GetWorldTimerManager().SetTimer(TimerHandle_HandleTeleport, this, &ABasicObject::Teleport, TeleportDelay, false);
 		}
+
+		if (IsDisabledAfterUse)
+		{
+			IsEnabled = false;
+		}
+
+		if(IsEndGame)
+		{
+			GetWorldTimerManager().SetTimer(TimerHandle_HandleTeleport, this, &ABasicObject::SwapLevel, EndGameDelay, false);
+		}
 	}
+
 }
 
+void ABasicObject::SwapLevel()
+{
+	UWorld* TheWorld = GetWorld();
+
+	FString CurrentLevel = TheWorld->GetMapName();
+
+	if (UProjectLanternInstance* GI = Cast<UProjectLanternInstance>(GetWorld()->GetGameInstance()))
+	{
+		if (!GI->IsEndGame)
+			GI->ToggleEndGame();
+	}
+
+	UGameplayStatics::OpenLevel(GetWorld(), "MainMenuLevel");
+
+}

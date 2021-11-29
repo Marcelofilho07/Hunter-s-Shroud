@@ -60,6 +60,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Gameplay)
 	class USoundBase* FireSound;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	class USoundBase* WalkGrassSound;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	class USoundBase* WalkWoodSound;
+
+	/** Sound to play each time we walk */
+	class USoundBase* WalkSound;
+
 	/** AnimMontage to play each time we fire */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	class UAnimMontage* FireAnimation;
@@ -70,6 +78,9 @@ public:
 	/** Whether to use motion controller location for aiming. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	uint32 bUsingMotionControllers : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float SpeedMultiplier;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	float TouchRange;
@@ -83,27 +94,50 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	float ZoomAmmount;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float GunDamage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float GunRange;
+
 	UPROPERTY(EditAnywhere)
 	class USceneComponent* HoldingComponent;
 
 	class ABasicObject* CurrentObject;
 
 	FTimerHandle TimerHandle_HandleFadeBlack;
+	FTimerHandle TimerHandle_HandleWalkSound;
+	FTimerHandle TimerHandle_HandleRateOfFire;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	float FadeTime;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float WalkSoundTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float RateOfFireTime;
+
+	bool IsHoldingGun;
 
 	bool IsHoldingObj;
 
+	bool CanFire;
 	bool CanMove;
+	bool CanClick;
+	bool CanMakeStepSound;
 
 	virtual void Tick(float DeltaTime) override;
 
+	void ToggleGun();
+
 protected:
 	
-	/** Fires a projectile. */
+	/** Interact with object. */
 	void OnAction();
+
+	/** Fire gun if holding any. */
+	void OnFire();
 
 	/** Handles moving forward/backward */
 	void MoveForward(float Val);
@@ -114,6 +148,10 @@ protected:
 	void InteractWithObj();
 
 	void ToggleMovement();
+
+	void ToggleCanMakeWalkingSound();
+
+	void ToggleFire();
 
 	float FoV;
 

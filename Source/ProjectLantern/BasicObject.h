@@ -18,11 +18,11 @@ public:
 	// Sets default values for this actor's properties
 	ABasicObject();
 
-	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = "Mesh")
 	UStaticMeshComponent* VisualMesh;
 
-	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
-	UStaticMeshComponent* VisualMesh2;
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = "Mesh")
+	UStaticMesh* StaticMesh;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	FString ObjMessage;
@@ -43,7 +43,22 @@ public:
 	bool IsChangeVisualMeshAfterUse;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsDisabledAfterUse;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	bool IsTeleport;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsChangeAmbience;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	float LightningLevel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	FColor LightningColor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Events)
+	FColor FogColor;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	FVector TeleportDestination;
@@ -52,13 +67,19 @@ public:
 	bool IsEnabled;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	bool IsEndGame;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)	
 	bool ScreenFadesToBlackAfterAction;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	int ObjId;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
-	int NextTaskObjId;
+	int NextObjId;
+
+	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
+	int NextEventId;
 
 	UPROPERTY(EditAnywhere, BluePrintReadWrite, Category = Gameplay)
 	bool BGravity;
@@ -74,17 +95,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
 	float DestroyDelay;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float AmbienceDelay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Gameplay)
+	float EndGameDelay;
+
 	FTimerHandle TimerHandle_HandleTeleport;
 	FTimerHandle TimerHandle_HandleChange;
 	FTimerHandle TimerHandle_HandleDestroy;
+	FTimerHandle TimerHandle_HandleAmbience;
 
 	FRotator ControlRotation;
 	ACharacter* MyCharacter;
 	UCameraComponent* PlayerCamera;
 	FVector ForwardVector;
 
+
 	UFUNCTION()
-	void Action();
+	virtual void Action();
 
 protected:
 	// Called when the game starts or when spawned
@@ -94,10 +123,14 @@ protected:
 
 	void ChangeMesh();
 
+	void ChangeAmbience();
+
 	void DestroySelf();
 
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	void SwapLevel();
 
 };
